@@ -40,8 +40,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true;
 });
 
+// Chrome only injects manifest content scripts into pages loaded after install, and an update
+// or reload cuts off the copies already running. Inject into the tabs that are already open.
+async function injectIntoOpenTabs() {
+  for (const { matches, js } of chrome.runtime.getManifest().content_scripts || []) {
+    const tabs = await chrome.tabs.query({ url: matches }).catch(() => []);
+    for (const tab of tabs) {
+      if (tab.discarded) continue;
+      chrome.scripting.executeScript({ target: { tabId: tab.id }, files: js }).catch(() => {});
+    }
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   if (reason === 'install') chrome.runtime.openOptionsPage();
+  if (reason === 'install' || reason === 'update') injectIntoOpenTabs();
   const current = await chrome.storage.sync.get(null);
   await chrome.storage.sync.set({ ...DEFAULTS, ...current, sites: { ...DEFAULTS.sites, ...current.sites } });
 });

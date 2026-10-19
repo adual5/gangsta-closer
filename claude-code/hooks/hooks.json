@@ -3,13 +3,21 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|mcp__.*__(issue_write|update_issue_state|merge_pull_request)",
+        "matcher": "Bash|mcp__.*__(issue_write|update_issue|update_issue_state|merge_pull_request)",
         "hooks": [
           { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/closer.py\" pre", "timeout": 15 }
         ]
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Bash|mcp__.*",
+        "hooks": [
+          { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/closer.py\" post", "timeout": 15, "async": true }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
       {
         "matcher": "Bash|mcp__.*",
         "hooks": [

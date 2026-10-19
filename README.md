@@ -20,7 +20,8 @@ pick one, a short built-in chime plays.
 Your clip is stored only in your browser (`chrome.storage.local`). Nothing is uploaded, and the
 extension collects no data.
 
-After pulling updates, hit the reload ↻ on the extension card and refresh open GitHub/Linear/Jira/Asana tabs.
+After pulling updates, hit the reload ↻ on the extension card. Open GitHub/Linear/Jira/Asana tabs get the new
+version without a refresh; if one stops playing, its console says to refresh it. Needs Chrome 116 or later.
 
 ## What triggers it
 
@@ -44,9 +45,12 @@ Every site goes through one engine ([`src/content/engine.js`](src/content/engine
 2. Right **before** each click/keypress/drag, the engine snapshots that as a baseline.
 3. For ~8 s **after** the input, it re-checks. Any item or card that went from not-done → done plays the clip.
 
-So it only fires when the close actually lands (not when a click fails), never for teammates' changes
-you happen to be watching, and not when you drag a card across Done and drop it elsewhere. A full page
-reload (classic GitHub PR close) is covered by carrying the baseline across the reload in `sessionStorage`.
+So it only fires when the close actually lands (not when a click fails), and not when you drag a card
+across Done and drop it elsewhere. A board card only counts when your click, drag or key press was on it,
+so a teammate's card moving while you work elsewhere on the board stays silent, and an item or card that
+was off screen for more than a few seconds starts fresh when it comes back. A page load caused by the close
+itself (classic GitHub PR close) is covered by carrying the baseline across it in `sessionStorage`; a manual
+reload or Back isn't, so reloading a tab after someone else's close stays silent.
 Audio plays from an offscreen extension document, so site CSP/autoplay rules can't block it.
 
 Selectors live in one small file per site ([`github.js`](src/content/github.js), [`linear.js`](src/content/linear.js),
@@ -88,7 +92,8 @@ It doesn't need the extension; the two never play for the same close.
 ```
 
 **Your clip:** `/gangsta-closer:clip ~/Music/clip.mp3` copies it to `~/.gangsta-closer/` and plays it once.
-MP3, WAV or M4A, up to 5 MB (OGG works on Linux, not macOS). `/gangsta-closer:clip` alone plays the current
+MP3, WAV or M4A, up to 5 MB (OGG works on Linux, not macOS). On Linux, M4A needs `ffplay` (ffmpeg) and MP3
+needs `ffplay` or `mpg123`; the command says so if nothing can play your file. `/gangsta-closer:clip` alone plays the current
 clip; `/gangsta-closer:clip reset` goes back to the system chime. The extension keeps its clip inside Chrome,
 so pick the same file in both if you want them to match.
 
@@ -96,14 +101,16 @@ so pick the same file in both if you want them to match.
 
 | | Plays | Silent |
 |---|---|---|
-| **GitHub** issue: `gh issue close`, `gh api … issues/N`, GitHub MCP `issue_write` / `update_issue_state` | Closed as completed | Not planned, duplicate, already closed, a close that didn't land |
+| **GitHub** issue: `gh issue close`, `gh api … issues/N`, GitHub MCP `issue_write` / `update_issue_state` / `update_issue` | Closed as completed | Not planned, duplicate, already closed, a close that didn't land |
 | **GitHub** PR: `gh pr merge`, `gh api … pulls/N/merge`, GitHub MCP `merge_pull_request` | Merged | Closed without merging; `--auto` or a merge queue (still open when the call returns) |
 | **Linear** MCP `save_issue` on an existing issue (state by ID, name or type) | New state's type is *completed* (so a renamed "Shipped" counts) | *canceled*, *duplicate*, any other type, creating an issue |
 | **Jira Cloud** Atlassian MCP `transitionJiraIssue` (by transition ID or name) | Lands in a status in the Done category | Other categories; Done-category statuses named Won't Do, Canceled, Duplicate… |
 | **Asana** MCP `update_tasks` | `completed: true` on a task the result lists as updated | Unticking, other edits, an update that failed |
 
 **How it decides.** For GitHub, a hook reads the item with `gh` right before the call and again after it;
-only a not-done → done change plays, so a failed or repeated close stays quiet. The hook has no Linear, Jira
+only a not-done → done change plays, so a failed or repeated close stays quiet, and a close inside a command
+that fails afterwards (`gh issue close 12 && npm test`) still plays. The hook only ever asks github.com, about a
+plain `owner/repo`; it never contacts another host. The hook has no Linear, Jira
 or Asana token, so it reads the MCP call itself: its input and result, plus the state listings Claude
 fetched earlier in the session (Linear's statuses, Jira's transitions), from the session transcript.
 Linear's result carries the new state's type. Jira's carries only the transition ID and the status name it
@@ -113,11 +120,13 @@ extension's done-name rule. Plays at most once per
 [`claude-code/hooks/closer.py`](claude-code/hooks/closer.py). Set `GANGSTA_CLOSER_DEBUG=1` to log decisions to
 `~/.gangsta-closer/debug.log`.
 
-**Known gaps.** Asana gives no before-state, so completing an already-complete task plays again. GraphQL
-closes (`gh api graphql`) aren't watched.
+**Known gaps.** Asana and Jira give no before-state, so completing an already-complete Asana task, or
+transitioning a Jira issue that's already Done to Done, plays again. GraphQL closes (`gh api graphql`) and
+GitHub Enterprise aren't watched. The clip command passes your path to the shell in double quotes, so a
+file name containing `$`, a backtick or `"` needs renaming first.
 
 **Tests:** `python3 claude-code/tests/test_closer.py` runs the real hook against a fake `gh` and a fake player
-(61 cases).
+(96 cases).
 
 | | Verified how |
 |---|---|

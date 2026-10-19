@@ -44,7 +44,7 @@
       if (key) out.push({ key, state: itemState() });
       for (const card of document.querySelectorAll('[data-board-card-id]')) {
         const column = card.closest('[data-board-column]');
-        if (column) out.push({ key: `card:gh:${card.getAttribute('data-board-card-id')}`, state: column.getAttribute('data-board-column') });
+        if (column) out.push({ key: `card:gh:${card.getAttribute('data-board-card-id')}`, state: column.getAttribute('data-board-column'), el: card });
       }
       return out;
     },

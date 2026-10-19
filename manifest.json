@@ -7,7 +7,9 @@
   "action": { "default_popup": "src/popup/popup.html", "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png" } },
   "options_ui": { "page": "src/options/options.html", "open_in_tab": true },
   "background": { "service_worker": "src/background.js" },
-  "permissions": ["storage", "offscreen"],
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "offscreen", "scripting"],
+  "host_permissions": ["https://github.com/*", "https://linear.app/*", "https://*.atlassian.net/*", "https://app.asana.com/*"],
   "content_scripts": [
     { "matches": ["https://github.com/*"], "js": ["src/content/engine.js", "src/content/github.js"], "run_at": "document_idle" },
     { "matches": ["https://linear.app/*"], "js": ["src/content/engine.js", "src/content/linear.js"], "run_at": "document_idle" },

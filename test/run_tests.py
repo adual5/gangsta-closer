@@ -164,6 +164,30 @@ def main():
         page.wait_for_timeout(SETTLE * 1000)
         check("Close pull request (page reloads) plays", plays() - n, 1)
 
+        page.wait_for_timeout(COOLDOWN * 1000)
+        pr_state["s"] = "Open"
+        page.goto("https://github.com/gangsta-fixture/repo/pull/1")
+        page.wait_for_timeout(800)
+        page.keyboard.press("Shift")
+        pr_state["s"] = "Closed"  # someone else closes it; this tab still shows Open
+        n = plays()
+        page.reload()
+        page.wait_for_timeout(SETTLE * 1000)
+        check("reload after someone else's close is silent", plays() - n, 0)
+
+        pr_state["s"] = "Open"
+        page.goto("https://github.com/gangsta-fixture/repo/pull/1")
+        page.wait_for_timeout(800)
+        page.mouse.click(5, 300)
+        page.goto("https://github.com/gangsta-fixture/board")
+        page.wait_for_timeout(4000)  # the PR is off screen for a while
+        pr_state["s"] = "Closed"
+        page.mouse.click(5, 300)
+        n = plays()
+        page.goto("https://github.com/gangsta-fixture/repo/pull/1")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("coming back to a PR someone else closed is silent", plays() - n, 0)
+
         # --- GitHub Projects board ----------------------------------------------
         print("GitHub Projects board (fixture)")
         page.wait_for_timeout(COOLDOWN * 1000)
@@ -188,6 +212,22 @@ def main():
         page.wait_for_timeout(SETTLE * 1000)
         check("drag In Progress -> Shipped plays with 'Shipped' as extra done name", plays() - n, 1)
         sw.evaluate("chrome.storage.sync.set({ extraDone: '' })")
+        page.wait_for_timeout(9000)  # past the input window of the drags above
+
+        # A card's status set from its side panel: the click on the card, then input in the panel.
+        move = "(id) => document.querySelector('[data-board-column=\"Done\"]').append(document.getElementById(id))"
+        page.click("#c102")
+        page.wait_for_timeout(500)
+        page.mouse.click(5, 5)  # in the side panel, not on the card
+        n = plays()
+        page.evaluate(move, "c103")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("teammate's card moves to Done while you work in another card's panel is silent", plays() - n, 0)
+        page.mouse.click(5, 5)
+        n = plays()
+        page.evaluate(move, "c102")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("card set to Done from its side panel plays", plays() - n, 1)
 
         # --- Linear board -------------------------------------------------------
         print("Linear board (fixture of live DOM structure)")
@@ -278,6 +318,28 @@ def main():
         page.evaluate("remoteComplete('402')")
         page.wait_for_timeout(SETTLE * 1000)
         check("teammate completes a task (no local input) is silent", plays() - n, 0)
+
+        n = plays()
+        page.mouse.click(5, 5)
+        page.evaluate("""() => document.querySelector('#row302').setAttribute('aria-checked', 'true')""")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("teammate completes a task while you click elsewhere is silent", plays() - n, 0)
+
+        # --- Install/update injection into open tabs ------------------------------
+        # (Chromium here drops an unpacked extension on chrome.runtime.reload(), so the update itself
+        # can't be driven; this checks that injecting into a tab that already runs the engine is safe.)
+        print("Injection into an already-open tab (fixture)")
+        page.wait_for_timeout(COOLDOWN * 1000)
+        page.goto("https://acme.atlassian.net/browse/GC-8")
+        page.wait_for_timeout(800)
+        sw.evaluate("injectIntoOpenTabs()")
+        page.wait_for_timeout(800)
+        n = plays()
+        page.click("#status")
+        page.click("[role=menuitem]:text-is('Done')")
+        page.wait_for_timeout(SETTLE * 1000)
+        plays_in_page = page.evaluate("Number(document.documentElement.dataset.gangstaCloserPlays || 0)")
+        check(f"injected twice, one close plays once (engine plays in page: {plays_in_page})", plays() - n, 1)
 
         if not OFFLINE:
             live_github(page, plays)

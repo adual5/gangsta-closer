@@ -76,6 +76,8 @@ See [`test/fixtures`](test/fixtures).
 | GitHub Projects board | Live selector check on a real board; drag behaviour on a mock |
 | Linear | Live: board drag to Done and issue-page status change to Done both played (v1.0.2); drag behaviour also on a mock |
 | Jira | Mock pages only; no Jira instance was available |
+| Install and update | Tabs opened before install, and before an update, play without a refresh: the extension is installed and updated into the running browser (CDP `Extensions.loadUnpacked`) so Chrome fires the real `onInstalled` |
+| Popup | Extra done names typed and then closed with Esc are saved |
 | Asana | Live: ticking a task complete in a list row, on a board card and in the task pane (wide and narrow) each played, and unticking was silent. The engine and Asana adapter were run in the page with real clicks, not as the installed extension. A drag into a Done column is checked on a mock only |
 
 ## Claude Code plugin

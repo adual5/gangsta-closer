@@ -9,6 +9,7 @@ test/fixtures (mock pages that use Jira's real data-testids). GitHub tests run
 against real public pages; the state change itself is simulated in the DOM since
 closing needs write access.
 """
+import shutil
 import sys
 import tempfile
 import time
@@ -325,9 +326,8 @@ def main():
         page.wait_for_timeout(SETTLE * 1000)
         check("teammate completes a task while you click elsewhere is silent", plays() - n, 0)
 
-        # --- Install/update injection into open tabs ------------------------------
-        # (Chromium here drops an unpacked extension on chrome.runtime.reload(), so the update itself
-        # can't be driven; this checks that injecting into a tab that already runs the engine is safe.)
+        # --- Injecting into a tab that already runs the engine is safe ------------
+        # (install and update themselves are driven in install_and_update(), in a browser of their own)
         print("Injection into an already-open tab (fixture)")
         page.wait_for_timeout(COOLDOWN * 1000)
         page.goto("https://acme.atlassian.net/browse/GC-8")
@@ -340,6 +340,23 @@ def main():
         page.wait_for_timeout(SETTLE * 1000)
         plays_in_page = page.evaluate("Number(document.documentElement.dataset.gangstaCloserPlays || 0)")
         check(f"injected twice, one close plays once (engine plays in page: {plays_in_page})", plays() - n, 1)
+
+        # --- Popup: Extra done names survive the popup closing ------------------
+        print("Popup Extra done names (popup closes without a change event)")
+        ext = sw.url.split("/")[2]
+        for how in ("close right after typing", "Escape, then close"):
+            pop = ctx.new_page()
+            pop.goto(f"chrome-extension://{ext}/src/popup/popup.html")
+            pop.wait_for_timeout(400)
+            value = "Shipped " + how.split()[0]
+            pop.fill("#extraDone", "")
+            pop.type("#extraDone", value)
+            if how.startswith("Escape"):
+                pop.keyboard.press("Escape")
+            pop.close(run_before_unload=True)
+            saved = sw.evaluate("chrome.storage.sync.get('extraDone').then(r => r.extraDone)")
+            check(f"{how}: typed names are saved", saved == value, True)
+        sw.evaluate("chrome.storage.sync.set({ extraDone: '' })")
 
         if not OFFLINE:
             live_github(page, plays)
@@ -355,9 +372,63 @@ def main():
         sw.evaluate("chrome.storage.local.remove('clip')")
         ctx.close()
 
+        install_and_update(p, serve_pr, pr_state)
+
     passed = sum(results)
     print(f"\n{passed}/{len(results)} passed")
     sys.exit(0 if passed == len(results) else 1)
+
+
+def install_and_update(p, serve_pr, pr_state):
+    """Tabs open before install, and before an update, play without a refresh. The extension is installed
+    after the tab loads (CDP Extensions.loadUnpacked), so Chrome fires the real onInstalled('install');
+    loading it again with a higher version fires onInstalled('update')."""
+    print("Install and update with tabs already open")
+    ext_dir = Path(tempfile.mkdtemp()) / "ext"  # a copy, so the version bump never touches the repo
+    shutil.copytree(ROOT, ext_dir, ignore=shutil.ignore_patterns(".git", "test", "claude-code"))
+    ctx = p.chromium.launch_persistent_context(tempfile.mkdtemp(prefix="gangsta-closer-install-"), channel="chromium",
+                                               headless=True, args=["--enable-unsafe-extension-debugging"],
+                                               ignore_default_args=["--disable-extensions"])
+    ctx.route("https://github.com/gangsta-fixture/**", serve_pr)
+    ctx.route("https://acme.atlassian.net/**", lambda route: route.fulfill(path=str(FIXTURES / "jira-issue.html")))
+    page = ctx.new_page()
+    pr_state["s"] = "Open"
+    page.goto("https://github.com/gangsta-fixture/repo/pull/1")
+    page.wait_for_timeout(800)
+
+    cdp = ctx.browser.new_browser_cdp_session()
+    ext = cdp.send("Extensions.loadUnpacked", {"path": str(ext_dir)})["id"]
+    page.wait_for_timeout(1500)
+    # Playwright doesn't pick up a service worker registered this late, so read counts from an extension page.
+    probe = ctx.new_page()
+    probe.goto(f"chrome-extension://{ext}/src/popup/popup.html")
+    plays = lambda: probe.evaluate("chrome.storage.local.get('closes').then(r => r.closes || 0)")
+
+    n = plays()
+    page.bring_to_front()
+    page.click("#close")
+    page.wait_for_load_state()
+    page.wait_for_timeout(SETTLE * 1000)
+    check("install: tab opened before install, Close pull request plays", plays() - n, 1)
+
+    # The PR close reloads the page, so the update is checked on an in-page Jira status change.
+    page.wait_for_timeout(COOLDOWN * 1000)
+    page.goto("https://acme.atlassian.net/browse/GC-7")
+    page.wait_for_timeout(1000)
+    manifest = ext_dir / "manifest.json"
+    manifest.write_text(manifest.read_text().replace('"version": "', '"version": "9', 1))
+    cdp.send("Extensions.loadUnpacked", {"path": str(ext_dir)})
+    page.wait_for_timeout(SETTLE * 1000)
+    probe.close()
+    probe = ctx.new_page()
+    probe.goto(f"chrome-extension://{ext}/src/popup/popup.html")
+    n = plays()
+    url = page.url
+    page.click("#status")
+    page.click("[role=menuitem]:text-is('Done')")
+    page.wait_for_timeout(SETTLE * 1000)
+    check(f"update: same tab, no reload ({page.url == url}), status -> Done plays once", plays() - n, 1)
+    ctx.close()
 
 
 def live_github(page, plays):

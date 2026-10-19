@@ -122,6 +122,31 @@ class Hook(unittest.TestCase):
         self.assertEqual(self.bash("gh issue close 12", {"issues": [issue(12)]},
                                    {"issues": [issue(12, "CLOSED", "COMPLETED")]}), 1)
 
+    def background(self, before, later):
+        """run_in_background: the post hook fires as the command starts (seen live), then the close lands."""
+        self.env["GANGSTA_CLOSER_WATCH_EVERY_S"] = "0.5"
+        self.n += 1
+        event = {"tool_name": "Bash", "tool_input": {"command": "sleep 8 && gh issue close 12", "run_in_background": True},
+                 "tool_use_id": f"toolu_{self.n}", "cwd": str(self.tmp), "hook_event_name": "PreToolUse"}
+        self.gh_state(**before)
+        self.run_hook("pre", event)
+        self.run_hook("post", dict(event, hook_event_name="PostToolUse",
+                                   tool_response={"stdout": "", "backgroundTaskId": "b1"}))
+        at_start = self.plays()
+        self.gh_state(**later)
+        time.sleep(2)
+        return at_start, self.plays()
+
+    def test_background_close_plays_when_it_lands(self):
+        self.assertEqual(self.background({"issues": [issue(12)]}, {"issues": [issue(12, "CLOSED", "COMPLETED")]}), (0, 1))
+
+    def test_background_close_that_never_lands_silent(self):
+        self.assertEqual(self.background({"issues": [issue(12)]}, {"issues": [issue(12)]}), (0, 0))
+
+    def test_background_on_already_closed_issue_silent(self):
+        closed = {"issues": [issue(12, "CLOSED", "COMPLETED")]}
+        self.assertEqual(self.background(closed, closed), (0, 0))
+
     def test_issue_close_not_planned_silent(self):
         self.assertEqual(self.bash('gh issue close 12 --reason "not planned"', {"issues": [issue(12)]},
                                    {"issues": [issue(12, "CLOSED", "NOT_PLANNED")]}), 0)
@@ -343,10 +368,10 @@ class McpServices(unittest.TestCase):
         with open(self.transcript, "a") as f:
             f.write(json.dumps(entry) + "\n")
 
-    def post(self, tool_name, tool_input, tool_response="", mcp_server=None, hook_event_name="PostToolUse"):
+    def post(self, tool_name, tool_input, tool_response="", mcp_server=None, hook_event_name="PostToolUse", **extra):
         event = {"tool_name": tool_name, "tool_input": tool_input, "tool_response": tool_response,
                  "tool_use_id": "toolu_1", "transcript_path": str(self.transcript), "cwd": str(self.tmp),
-                 "hook_event_name": hook_event_name}
+                 "hook_event_name": hook_event_name, **extra}
         if mcp_server:
             event["mcp_server"] = mcp_server
         subprocess.run([sys.executable, str(HOOK), "post"], input=json.dumps(event), text=True, env=self.env,
@@ -522,6 +547,19 @@ class McpServices(unittest.TestCase):
         self.earlier_result(self.JIRA_TRANSITIONS)
         self.assertEqual(self.post("mcp__9f1e__transitionJiraIssue",
                                    {"cloudId": "c", "issueIdOrKey": "PROJ-1", "transition": {"id": "31"}}), 1)
+
+    def test_jira_listing_fetched_by_a_subagent_is_found(self):
+        # Live: a subagent's hook event carries agent_id and the parent's transcript_path; its own calls are
+        # in <session>/subagents/agent-<id>.jsonl. "Released" isn't a done word, so only the listing decides.
+        sub = self.transcript.with_suffix("") / "subagents" / "agent-a1b2c3.jsonl"
+        sub.parent.mkdir(parents=True)
+        main, self.transcript = self.transcript, sub
+        self.earlier_result(self.JIRA_TRANSITIONS)
+        self.transcript = main
+        args = {"cloudId": "c", "issueIdOrKey": "PROJ-1", "transitionId": "31"}
+        self.assertEqual(self.post("mcp__atlassian__transitionJiraIssue", args, self.jira_result(31, "Released")), 0)
+        self.assertEqual(self.post("mcp__atlassian__transitionJiraIssue", args, self.jira_result(31, "Released"),
+                                   agent_id="a1b2c3", agent_type="general-purpose"), 1)
 
     def test_jira_unknown_transition_silent(self):
         self.assertEqual(self.post("mcp__atlassian__transitionJiraIssue",

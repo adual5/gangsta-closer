@@ -45,6 +45,8 @@ PENDING_TTL_S = 6 * 3600  # a call can wait on a permission prompt or run for a 
 GH_TIMEOUT_S = 6
 PRE_DEADLINE_S = 11  # stay well under the 15 s PreToolUse timeout in hooks.json
 MAX_TARGETS = 8
+WATCH_S = 30 * 60  # how long a background Bash call's items are watched for the close to land
+WATCH_EVERY_S = 10
 UNCHANGED_S = 30  # a Linear updatedAt older than this means the save changed nothing
 ALREADY_DONE_S = 120  # without updatedAt, a completedAt older than this means the issue was already done
 
@@ -515,13 +517,25 @@ def asana_done(args, response):
     return bool(wanted & updated)
 
 
+def session_dicts(event):
+    """Transcript dicts, newest first. In a subagent the hook still gets the parent's transcript_path,
+    while the subagent's own calls (the listing it fetched first) are in
+    <session>/subagents/agent-<agent_id>.jsonl (seen live), so that one is read first."""
+    path = event.get("transcript_path")
+    agent = str(event.get("agent_id") or "")
+    out = []
+    if path and re.fullmatch(r"[A-Za-z0-9_-]+", agent):
+        out = transcript_dicts(str(Path(path).with_suffix("") / "subagents" / f"agent-{agent}.jsonl"))
+    return out + transcript_dicts(path)
+
+
 def mcp_done(provider, tool, event):
     args = event.get("tool_input") or {}
     response = event.get("tool_response")
     if provider == "linear" and tool in ("save_issue", "update_issue"):
-        return linear_done(args, response, transcript_dicts(event.get("transcript_path")))
+        return linear_done(args, response, session_dicts(event))
     if provider == "jira" and tool == "transitionjiraissue":
-        return jira_done(args, response, transcript_dicts(event.get("transcript_path")))
+        return jira_done(args, response, session_dicts(event))
     if provider == "asana" and tool in ("update_tasks", "update_task", "asana_update_task"):
         return asana_done(args, response)
     return False
@@ -621,6 +635,24 @@ def hook_pre(event):
     cleanup_pending()
 
 
+def landed(before, cwd, name):
+    """Whether any item that wasn't done before the call is done now."""
+    for b in before:
+        # The pre hook stored each item's URL, so a merged branch that `gh` no longer
+        # resolves from the working copy still reads back the right PR.
+        after = gh_view(b["target"], b["target"].get("cwd") or cwd)
+        log("post", name, b, after)
+        if after and after["done"] and not b["done"]:
+            return True
+    return False
+
+
+def in_background(event):
+    response = event.get("tool_response")
+    return bool((event.get("tool_input") or {}).get("run_in_background") or
+                (isinstance(response, dict) and response.get("backgroundTaskId")))
+
+
 def hook_post(event):
     name = event.get("tool_name")
     failed = event.get("hook_event_name") == "PostToolUseFailure"
@@ -630,15 +662,21 @@ def hook_post(event):
             before = json.loads(path.read_text())
         finally:
             path.unlink()
-        for b in before:
-            # The pre hook stored each item's URL, so a merged branch that `gh` no longer
-            # resolves from the working copy still reads back the right PR. A Bash call that
-            # failed may still have landed the close (`gh issue close 12 && npm test`), so it's
-            # re-read the same way.
-            after = gh_view(b["target"], b["target"].get("cwd") or event.get("cwd"))
-            log("post", name, b, after)
-            if after and after["done"] and not b["done"]:
-                return play()
+        if in_background(event) and not failed:
+            # The post hook fires as the command starts, and nothing fires when it ends, so a
+            # detached watcher re-reads the items until one lands or WATCH_S runs out.
+            if any(not b["done"] for b in before):
+                watcher = subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), "watch"],
+                                           stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                                           stderr=subprocess.DEVNULL, start_new_session=True, text=True)
+                watcher.stdin.write(json.dumps({"before": before, "cwd": event.get("cwd"), "name": name}))
+                watcher.stdin.close()
+                log("post", name, "background: watching", [b["target"]["ref"] for b in before])
+            return
+        # A Bash call that failed may still have landed the close (`gh issue close 12 && npm test`),
+        # so it's re-read the same way.
+        if landed(before, event.get("cwd"), name):
+            play()
         return
     if failed:
         return  # Linear, Jira and Asana are judged from the result, and a failed call has none
@@ -648,6 +686,18 @@ def hook_post(event):
         log("post", name, "done" if done else "not done")
         if done:
             play()
+
+
+def watch(job):
+    """Detached from the hook: for a background Bash call, re-read its items until one lands."""
+    every = float(os.environ.get("GANGSTA_CLOSER_WATCH_EVERY_S") or WATCH_EVERY_S)
+    deadline = time.time() + WATCH_S
+    while time.time() < deadline:
+        time.sleep(every)
+        if landed(job["before"], job.get("cwd"), job.get("name")):
+            play()
+            return
+    log("watch: gave up", [b["target"]["ref"] for b in job["before"]])
 
 
 # ---------------------------------------------------------------- sound
@@ -836,6 +886,8 @@ def main():
             hook_pre(event)
         elif mode == "post":
             hook_post(event)
+        elif mode == "watch":
+            watch(event)
     except Exception as e:  # a sound effect must never break a tool call
         log("error:", repr(e))
     return 0

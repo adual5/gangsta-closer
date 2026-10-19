@@ -87,6 +87,11 @@ def main():
         ctx.route("https://github.com/gangsta-fixture/**", serve_pr)
         ctx.route("https://app.asana.com/**", lambda route: route.fulfill(path=str(FIXTURES / "asana.html")))
 
+        # onInstalled opens the options page, and Chrome may put it in whichever tab is blank; wait for it
+        # so it can't take over the tab the tests navigate.
+        deadline = time.time() + 5
+        while time.time() < deadline and not any("/options/options.html" in pg.url for pg in ctx.pages):
+            time.sleep(0.1)
         page = ctx.new_page()
 
         # --- Jira board ---------------------------------------------------------

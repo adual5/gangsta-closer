@@ -1,0 +1,14 @@
+{
+  "name": "gangsta-closer",
+  "description": "Gangsta Closer for Claude Code: a sound clip when an issue closes or a PR merges.",
+  "owner": {
+    "name": "Alfred Dual"
+  },
+  "plugins": [
+    {
+      "name": "gangsta-closer",
+      "source": "./claude-code",
+      "description": "Plays your sound clip when Claude Code closes an issue or merges a PR in GitHub, Linear, Jira Cloud or Asana."
+    }
+  ]
+}

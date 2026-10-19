@@ -433,6 +433,25 @@ class McpServices(unittest.TestCase):
                                                       "completedAt": now})}]
         self.assertEqual(self.post("mcp__linear__save_issue", {"id": "AMD-5", "state": "completed"}, fresh), 1)
 
+    @staticmethod
+    def linear_at(updated_s_ago, completed_s_ago):
+        # Live save_issue results (AMD-6, 2026-10-19): a no-op Done keeps the old updatedAt; Done after a
+        # reopen sets updatedAt to now but restores the old completedAt.
+        from datetime import datetime, timedelta, timezone
+        stamp = lambda s: (datetime.now(timezone.utc) - timedelta(seconds=s)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        return [{"type": "text", "text": json.dumps({"id": "AMD-6", "status": "Done", "statusType": "completed",
+                                                     "updatedAt": stamp(updated_s_ago), "completedAt": stamp(completed_s_ago)})}]
+
+    def test_linear_reclose_after_reopen_plays(self):
+        self.assertEqual(self.post("mcp__linear__save_issue", {"id": "AMD-6", "state": "Done"}, self.linear_at(1, 600)), 1)
+
+    def test_linear_done_resent_soon_after_closing_silent(self):
+        self.assertEqual(self.post("mcp__linear__save_issue", {"id": "AMD-6", "state": "Done"}, self.linear_at(60, 60)), 0)
+
+    def test_linear_error_text_as_result_silent(self):
+        err = [{"type": "text", "text": 'Error: Could not find issue "AMD-99999". To create a new issue, omit the "id" parameter.'}]
+        self.assertEqual(self.post("mcp__linear__save_issue", {"id": "AMD-99999", "state": "Done"}, err), 0)
+
     def test_linear_failed_call_silent(self):
         self.assertEqual(self.post("mcp__linear__save_issue", {"id": "AMD-5", "state": "completed"},
                                    hook_event_name="PostToolUseFailure"), 0)

@@ -45,7 +45,8 @@ PENDING_TTL_S = 6 * 3600  # a call can wait on a permission prompt or run for a 
 GH_TIMEOUT_S = 6
 PRE_DEADLINE_S = 11  # stay well under the 15 s PreToolUse timeout in hooks.json
 MAX_TARGETS = 8
-ALREADY_DONE_S = 120  # a Linear completedAt older than this means the issue was already done
+UNCHANGED_S = 30  # a Linear updatedAt older than this means the save changed nothing
+ALREADY_DONE_S = 120  # without updatedAt, a completedAt older than this means the issue was already done
 
 
 def private_dir(path):
@@ -408,18 +409,29 @@ NOT_A_WIN = re.compile(r"not planned|won['’]?t|cancel|duplicate|rejected|decli
 LINEAR_STATE_TYPES = {"triage", "backlog", "unstarted", "started", "completed", "canceled", "duplicate"}
 
 
+def age_s(stamp):
+    try:
+        when = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - when).total_seconds()
+
+
 def already_completed(response):
-    """True when the result's completedAt is old: the issue was done before this call."""
+    """True when this call didn't change an issue that was already done. Saving Done on a done issue
+    leaves updatedAt alone, while a reopened issue closed again gets its old completedAt back (both seen
+    live), so updatedAt decides; completedAt is only the fallback for a result without it."""
     for d in response_dicts(response):
-        at = d.get("completedAt")
-        if d.get("id") and isinstance(at, str) and at:
-            try:
-                when = datetime.fromisoformat(at.replace("Z", "+00:00"))
-            except ValueError:
-                continue
-            if when.tzinfo is None:
-                when = when.replace(tzinfo=timezone.utc)
-            return (datetime.now(timezone.utc) - when).total_seconds() > ALREADY_DONE_S
+        if not d.get("id"):
+            continue
+        updated = age_s(d.get("updatedAt"))
+        if updated is not None:
+            return updated > UNCHANGED_S
+        completed = age_s(d.get("completedAt"))
+        if completed is not None:
+            return completed > ALREADY_DONE_S
     return False
 
 
@@ -433,6 +445,8 @@ def linear_done(args, response, transcript):
     want = str(want)
     if already_completed(response):
         return False  # re-sending Done to an issue that was already done isn't a close
+    if result_text(response).strip() and not json_objects(result_text(response)):
+        return False  # an error message, not an issue (Claude Code reports these as failures anyway)
     # 0. save_issue also takes a state type ("completed", "canceled") in place of a name or ID.
     if want.lower() in LINEAR_STATE_TYPES:
         return want.lower() == "completed"

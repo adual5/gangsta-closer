@@ -2,6 +2,7 @@
 
 A Chrome extension that plays a sound clip of your choice every time you close an issue or
 pull request in **GitHub**, **Linear**, or **Jira Cloud**, or mark a task complete in **Asana**.
+A [Claude Code plugin](#claude-code-plugin) in the same repo does the same when Claude Code makes the close.
 
 We recommend *"Damn It Feels Good to Be a Gangsta"*. The extension ships no music: you bring
 your own clip, and **whatever you choose, make sure you have the right to use it.** Until you
@@ -72,6 +73,60 @@ See [`test/fixtures`](test/fixtures).
 | Linear | Live: board drag to Done and issue-page status change to Done both played (v1.0.2); drag behaviour also on a mock |
 | Jira | Mock pages only; no Jira instance was available |
 | Asana | Live: ticking a task complete in a list row, on a board card and in the task pane (wide and narrow) each played, and unticking was silent. The engine and Asana adapter were run in the page with real clicks, not as the installed extension. A drag into a Done column is checked on a mock only |
+
+## Claude Code plugin
+
+The same idea for closes made through [Claude Code](https://claude.com/claude-code): the plugin plays your
+clip when a tool call closes an issue, merges a PR, or completes a task in GitHub, Linear, Jira Cloud or Asana.
+It doesn't need the extension; the two never play for the same close.
+
+**Install** (needs `python3`; GitHub also needs [`gh`](https://cli.github.com) signed in):
+
+```
+/plugin marketplace add adual5/gangsta-closer
+/plugin install gangsta-closer@gangsta-closer
+```
+
+**Your clip:** `/gangsta-closer:clip ~/Music/clip.mp3` copies it to `~/.gangsta-closer/` and plays it once.
+MP3, WAV or M4A, up to 5 MB (OGG works on Linux, not macOS). `/gangsta-closer:clip` alone plays the current
+clip; `/gangsta-closer:clip reset` goes back to the system chime. The extension keeps its clip inside Chrome,
+so pick the same file in both if you want them to match.
+
+**What plays:**
+
+| | Plays | Silent |
+|---|---|---|
+| **GitHub** issue: `gh issue close`, `gh api … issues/N`, GitHub MCP `issue_write` / `update_issue_state` | Closed as completed | Not planned, duplicate, already closed, a close that didn't land |
+| **GitHub** PR: `gh pr merge`, `gh api … pulls/N/merge`, GitHub MCP `merge_pull_request` | Merged | Closed without merging; `--auto` or a merge queue (still open when the call returns) |
+| **Linear** MCP `save_issue` on an existing issue (state by ID, name or type) | New state's type is *completed* (so a renamed "Shipped" counts) | *canceled*, *duplicate*, any other type, creating an issue |
+| **Jira Cloud** Atlassian MCP `transitionJiraIssue` (by transition ID or name) | Lands in a status in the Done category | Other categories; Done-category statuses named Won't Do, Canceled, Duplicate… |
+| **Asana** MCP `update_tasks` | `completed: true` on a task the result lists as updated | Unticking, other edits, an update that failed |
+
+**How it decides.** For GitHub, a hook reads the item with `gh` right before the call and again after it;
+only a not-done → done change plays, so a failed or repeated close stays quiet. The hook has no Linear, Jira
+or Asana token, so it reads the MCP call itself: its input and result, plus the state listings Claude
+fetched earlier in the session (Linear's statuses, Jira's transitions), from the session transcript.
+Linear's result carries the new state's type. Jira's carries only the transition ID and the status name it
+landed on, so the category comes from the transition list; without one, the status name decides by the
+extension's done-name rule. Plays at most once per
+3 seconds, in the background, and never blocks or fails a tool call. Code:
+[`claude-code/hooks/closer.py`](claude-code/hooks/closer.py). Set `GANGSTA_CLOSER_DEBUG=1` to log decisions to
+`~/.gangsta-closer/debug.log`.
+
+**Known gaps.** Asana gives no before-state, so completing an already-complete task plays again. GraphQL
+closes (`gh api graphql`) aren't watched.
+
+**Tests:** `python3 claude-code/tests/test_closer.py` runs the real hook against a fake `gh` and a fake player
+(61 cases).
+
+| | Verified how |
+|---|---|
+| GitHub | Live, through Claude Code with the plugin installed, on a private throwaway repo: close as completed played; closing it again, not planned, and closing a PR without merging were silent; `gh pr merge 4` and `cd repo && gh pr merge` (PR from the current branch) played |
+| Asana | Live, through the Asana connector: completing a task played; unticking, renaming, and a completion that failed (unknown task) were silent |
+
+The test cases for Linear, Jira and Asana use the result formats captured from those live calls.
+| Linear | Live, through the Linear connector on a throwaway issue: moving to Done by state ID and by state type (`completed`) played; Canceled and In Progress were silent |
+| Jira | Live, through the Atlassian connector on a throwaway issue: transitioning to Done by ID and by transition name played; In Progress and To Do (by ID and by name) were silent |
 
 ## License
 

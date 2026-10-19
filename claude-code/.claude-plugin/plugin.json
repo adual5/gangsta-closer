@@ -1,0 +1,8 @@
+{
+  "name": "gangsta-closer",
+  "version": "1.0.0",
+  "description": "Plays your sound clip when Claude Code closes an issue or merges a PR in GitHub, Linear, Jira Cloud or Asana.",
+  "author": { "name": "Alfred Dual" },
+  "repository": "https://github.com/adual5/gangsta-closer",
+  "license": "MIT"
+}

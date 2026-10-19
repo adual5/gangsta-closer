@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gangsta Closer: your clip</title>
+  <link rel="stylesheet" href="../popup/popup.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <header><h1>Gangsta Closer: your clip</h1></header>
+
+  <section>
+    <h2>Current sound</h2>
+    <p id="current">Built-in chime</p>
+    <div class="buttons">
+      <button id="test">▶ Play</button>
+      <button id="remove" class="secondary" hidden>Use built-in chime</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Choose a clip</h2>
+    <input type="file" id="file" accept="audio/*">
+    <p class="hint">MP3, WAV, OGG or M4A, up to 5 MB. A few seconds works best; trim it before uploading.
+      The clip stays in this browser and is never uploaded anywhere.</p>
+    <p id="error" class="error" hidden></p>
+  </section>
+
+  <section class="rights">
+    <h2>Your clip, your rights</h2>
+    <p>We recommend <em>"Damn It Feels Good to Be a Gangsta"</em>, but this extension ships no music.
+      Whatever you choose, make sure you have the right to use it.</p>
+  </section>
+  <script src="options.js"></script>
+</body>
+</html>

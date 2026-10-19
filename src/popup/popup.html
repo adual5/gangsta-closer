@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Gangsta Closer</h1>
+    <label class="switch" title="Enable / disable">
+      <input type="checkbox" id="enabled"><span></span>
+    </label>
+  </header>
+
+  <p class="count"><strong id="closes">0</strong> closes and counting</p>
+
+  <section>
+    <div class="row">
+      <label for="volume">Volume</label>
+      <input type="range" id="volume" min="0" max="1" step="0.05">
+    </div>
+    <button id="test">▶ Test sound</button>
+    <p class="hint">Sound: <span id="clip">Built-in chime</span> · <a href="#" id="choose">Choose your clip</a></p>
+  </section>
+
+  <section>
+    <h2>Sites</h2>
+    <label class="check"><input type="checkbox" data-site="github"> GitHub</label>
+    <label class="check"><input type="checkbox" data-site="linear"> Linear</label>
+    <label class="check"><input type="checkbox" data-site="jira"> Jira</label>
+  </section>
+
+  <section>
+    <h2>Extra “done” names</h2>
+    <input type="text" id="extraDone" placeholder="e.g. Shipped, Deployed">
+    <p class="hint">Built in: Done, Closed, Complete(d), Resolved, Merged. Comma-separated.</p>
+  </section>
+
+  <footer>
+    <label class="check"><input type="checkbox" id="debug"> Debug logging (page console)</label>
+  </footer>
+  <script src="popup.js"></script>
+</body>
+</html>

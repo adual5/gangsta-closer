@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- Mock of a Jira Cloud board, using the data-testids Jira ships.
+     Cards use native HTML5 drag-and-drop like Jira's pragmatic-drag-and-drop, and
+     reflow into whatever column you hover (the worst case for false positives). -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>GC board - Jira (fixture)</title>
+<style>
+  body { font: 14px sans-serif; display: flex; gap: 12px; padding: 12px; }
+  [data-testid*="draggable-column"] { width: 200px; min-height: 300px; background: #f4f5f7; padding: 8px; }
+  [data-testid="platform-board-kit.ui.card.card"] { background: #fff; margin: 6px 0; padding: 10px; border: 1px solid #ccc; cursor: grab; }
+  h2 { font-size: 12px; text-transform: uppercase; margin: 0; }
+</style>
+</head>
+<body>
+  <script>
+    const columns = { 'To Do': ['GC-1', 'GC-2', 'GC-3'], 'In Progress': ['GC-4'], 'In Review': [], 'Done': [], "Won't Do": [] };
+    for (const [name, keys] of Object.entries(columns)) {
+      const col = document.createElement('div');
+      col.setAttribute('data-testid', 'platform-board-kit.ui.column.draggable-column.styled-wrapper');
+      col.dataset.name = name;
+      col.innerHTML = `<div data-testid="platform-board-kit.common.ui.column-header.header.column-header-container">
+          <h2 data-testid="platform-board-kit.common.ui.column-header.editable-title.column-title.column-name">${name}</h2>
+          <span class="count">${keys.length}</span></div><div class="cards"></div>`;
+      for (const key of keys) {
+        const card = document.createElement('div');
+        card.setAttribute('data-testid', 'platform-board-kit.ui.card.card');
+        card.id = `card-${key}`;
+        card.draggable = true;
+        card.innerHTML = `<span data-testid="platform-card.common.ui.key.key">${key}</span> Fixture issue ${key}`;
+        col.querySelector('.cards').append(card);
+      }
+      document.body.append(col);
+    }
+    let dragged = null;
+    document.addEventListener('dragstart', (e) => { dragged = e.target.closest('[id^="card-"]'); e.dataTransfer.setData('text/plain', dragged.id); });
+    document.addEventListener('dragover', (e) => e.preventDefault());
+    document.addEventListener('dragenter', (e) => {
+      const col = e.target.closest?.('[data-testid*="draggable-column"]');
+      if (col && dragged) col.querySelector('.cards').append(dragged); // live reflow while hovering
+    });
+    document.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const col = e.target.closest('[data-testid*="draggable-column"]');
+      if (col && dragged) col.querySelector('.cards').append(dragged);
+    });
+    document.addEventListener('dragend', () => { dragged = null; });
+  </script>
+</body>
+</html>

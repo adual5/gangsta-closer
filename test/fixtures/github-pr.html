@@ -1,0 +1,16 @@
+<!doctype html>
+<!-- Mock of the classic GitHub PR header, where "Close pull request" is a form POST
+     that reloads the whole page. The test server swaps {{STATE}} after the POST. -->
+<html>
+<head><meta charset="utf-8"><title>Fixture PR · GitHub</title></head>
+<body>
+  <div id="partial-discussion-header">
+    <div class="gh-header-meta">
+      <span class="State State--{{STATE_LC}}" title="Status: {{STATE}}">{{STATE}}</span>
+    </div>
+  </div>
+  <form method="post" action="">
+    <button type="submit" id="close">Close pull request</button>
+  </form>
+</body>
+</html>

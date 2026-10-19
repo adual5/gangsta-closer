@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- Mock of a Linear board, copying the live DOM structure (Sep 2026): a header row of
+     <h3> column names, and separate <div data-board-column="N"> bodies (N = index) holding
+     <a data-board-item href="/ws/issue/KEY/slug"> cards. Moves happen on pointer drag
+     (Linear uses dnd-kit, not native drag-and-drop), and the card reflows while hovering. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>be-operations › All issues (fixture)</title>
+<style>
+  body { font: 14px sans-serif; margin: 0; padding: 12px; user-select: none; }
+  .row { display: flex; gap: 12px; }
+  .row > div { width: 200px; }
+  [data-board-column] { min-height: 300px; background: #eee; padding: 8px; }
+  a[data-board-item] { display: block; background: #fff; margin: 6px 0; padding: 10px; border: 1px solid #ccc; color: inherit; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="row" id="headers"></div>
+  <div class="row" id="columns"></div>
+  <script>
+    const names = ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done', 'Canceled', 'Duplicate'];
+    const cards = { 0: ['OPS-15', 'OPS-16'], 1: ['OPS-17'], 2: [], 3: [], 4: [], 5: [], 6: [] };
+    names.forEach((name, i) => {
+      const h = document.createElement('div');
+      h.innerHTML = `<div data-contextual-menu="true"><div><h3><span>${name}</span></h3></div></div>`;
+      document.getElementById('headers').append(h);
+      const col = document.createElement('div');
+      col.setAttribute('data-board-column', i);
+      for (const key of cards[i]) {
+        const a = document.createElement('a');
+        a.setAttribute('data-board-item', 'true');
+        a.href = `/belief-engines/issue/${key}/fixture`;
+        a.id = key;
+        a.innerHTML = `<div data-contextual-menu="true"><span>${key}</span> Fixture ${key}</div>`;
+        a.onclick = (e) => e.preventDefault();
+        col.append(a);
+      }
+      document.getElementById('columns').append(col);
+    });
+    // Like live Linear: native link drags start, and get cancelled, so no dragend ever fires.
+    document.addEventListener('dragstart', (e) => e.preventDefault());
+    // Minimal dnd-kit-like pointer dragging with live reflow.
+    let dragged = null;
+    document.addEventListener('pointerdown', (e) => { dragged = e.target.closest('a[data-board-item]'); });
+    document.addEventListener('pointermove', (e) => {
+      if (!dragged) return;
+      const col = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el.hasAttribute('data-board-column'));
+      if (col && dragged.parentElement !== col) col.append(dragged);
+    });
+    document.addEventListener('pointerup', () => { dragged = null; });
+  </script>
+</body>
+</html>

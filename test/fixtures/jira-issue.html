@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- Mock of the Jira Cloud issue view status field (/browse/GC-7). -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>[GC-7] Fixture issue - Jira (fixture)</title>
+<style>
+  body { font: 14px sans-serif; padding: 24px; }
+  [role=menu] { border: 1px solid #ccc; width: 160px; }
+  [role=menuitem] { padding: 6px 10px; cursor: pointer; }
+</style>
+</head>
+<body>
+  <h1>GC-7 Fixture issue</h1>
+  <div data-testid="issue.views.issue-base.foundation.status.status-field-wrapper">
+    <button data-testid="issue-field-status.ui.status-view.status-button.status-button" id="status">
+      <span>In Progress</span> <span aria-hidden="true">▾</span>
+    </button>
+  </div>
+  <div id="menu-host"></div>
+  <p><button id="unrelated">Unrelated button</button></p>
+  <script>
+    const status = document.getElementById('status');
+    status.onclick = () => {
+      const host = document.getElementById('menu-host');
+      host.innerHTML = '<div role="menu">' + ['To Do', 'In Progress', 'Done', "Won't Do"]
+        .map((s) => `<div role="menuitem">${s}</div>`).join('') + '</div>';
+      host.querySelectorAll('[role=menuitem]').forEach((item) => {
+        item.onclick = () => {
+          host.innerHTML = '';
+          // Jira round-trips to the server before the lozenge updates.
+          setTimeout(() => { status.querySelector('span').textContent = item.textContent; }, 400);
+        };
+      });
+    };
+    // Test hook: a teammate changing the status (no local user input).
+    window.remoteSetStatus = (s) => { status.querySelector('span').textContent = s; };
+  </script>
+</body>
+</html>

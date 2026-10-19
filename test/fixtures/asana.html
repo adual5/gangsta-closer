@@ -1,0 +1,104 @@
+<!doctype html>
+<!-- Mock of Asana's list rows, task pane and board (served at app.asana.com/1/1/project/111/task/222).
+     Structure copied from the live app (October 2026); src/content/asana.js lists the selectors. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Fixture project - Asana (fixture)</title>
+<style>
+  body { font: 14px sans-serif; padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .SpreadsheetRow { display: flex; gap: 8px; padding: 6px; border-bottom: 1px solid #ddd; }
+  .TaskRowCompletionStatus-checkbox { width: 16px; height: 16px; border: 1px solid #888; border-radius: 50%; cursor: pointer; }
+  [aria-checked=true], [aria-pressed=true] { background: #5da283; }
+  textarea { border: 0; resize: none; height: 18px; font: inherit; }
+  [aria-hidden=true] { display: none; }
+  .TaskCompletionToggleButton { display: inline-block; padding: 4px 10px; border: 1px solid #888; cursor: pointer; }
+  .board { display: flex; gap: 12px; grid-column: 1 / -1; }
+  .BoardColumn { width: 220px; min-height: 260px; border: 1px solid #ccc; padding: 8px; }
+  .BoardCardLayout { display: flex; gap: 8px; padding: 8px; margin: 6px 0; border: 1px solid #aaa; background: #fff; }
+</style>
+</head>
+<body>
+  <section>
+    <div class="SpreadsheetRow SpreadsheetRow--enabled" role="row">
+      <div role="checkbox" aria-checked="false" aria-label="Mark complete" class="TaskRowCompletionStatus-checkbox--enabled TaskRowCompletionStatus-checkbox TaskRowCompletionStatus" id="row301"></div>
+      <textarea id="Pot.111_900_301">Write launch post</textarea>
+    </div>
+    <div class="SpreadsheetRow SpreadsheetRow--enabled" role="row">
+      <div role="checkbox" aria-checked="true" aria-label="Mark incomplete" class="TaskRowCompletionStatus-checkbox--enabled TaskRowCompletionStatus-checkbox TaskRowCompletionStatus" id="row302"></div>
+      <textarea id="Pot.111_900_302">Already done</textarea>
+    </div>
+  </section>
+
+  <section class="TaskPane" data-task-id="222">
+    <!-- The toolbar shows one of these two rows, depending on the pane's width. -->
+    <div class="SwappingToolbarContent-row SwappingToolbarContent-defaultRow" aria-hidden="false" id="wide-row">
+      <div role="button" aria-pressed="false" class="TaskCompletionToggleButton--isNotPressed TaskCompletionToggleButton" id="pane-button">Mark complete</div>
+    </div>
+    <div class="SwappingToolbarContent-row SwappingToolbarContent-alternateRow" aria-hidden="true" inert id="narrow-row">
+      <div role="checkbox" aria-checked="false" aria-label="Mark complete" class="TaskRowCompletionStatus-checkbox TaskPaneToolbarStatusIcon" id="pane-check"></div>
+    </div>
+    <h2>Task 222</h2>
+  </section>
+
+  <div class="board">
+    <div class="BoardColumn" data-name="Doing">
+      <div role="group" aria-label="column Doing" draggable="true" id="c401"><div class="BoardCardLayout BoardCard-layout" data-task-id="401">
+        <div role="checkbox" aria-checked="false" aria-label="Mark complete" class="TaskRowCompletionStatus-checkbox BoardCard-completionCheckbox"></div>Card A</div></div>
+      <div role="group" aria-label="column Doing" draggable="true" id="c402"><div class="BoardCardLayout BoardCard-layout" data-task-id="402">
+        <div role="checkbox" aria-checked="false" aria-label="Mark complete" class="TaskRowCompletionStatus-checkbox BoardCard-completionCheckbox"></div>Card B</div></div>
+    </div>
+    <div class="BoardColumn" data-name="Review"></div>
+    <div class="BoardColumn" data-name="Done"></div>
+  </div>
+
+  <script>
+    // Asana updates the checkmark optimistically, a moment after the click.
+    const flip = (el, attr) => {
+      const on = el.getAttribute(attr) !== 'true';
+      el.setAttribute(attr, String(on));
+      el.setAttribute('aria-label', on ? 'Mark incomplete' : 'Mark complete');
+      return on;
+    };
+    document.querySelectorAll('.SpreadsheetRow [role=checkbox], .BoardCardLayout [role=checkbox]').forEach((el) => {
+      el.onclick = () => setTimeout(() => flip(el, 'aria-checked'), 150);
+    });
+
+    // Both pane controls show the same task, so they flip together.
+    const button = document.getElementById('pane-button');
+    const check = document.getElementById('pane-check');
+    button.onclick = check.onclick = () => setTimeout(() => {
+      const on = flip(button, 'aria-pressed');
+      button.textContent = on ? 'Completed' : 'Mark complete';
+      check.setAttribute('aria-checked', String(on));
+    }, 150);
+
+    // Test hook: the pane gets narrow and swaps the button for a checkmark.
+    window.narrowPane = () => {
+      const wide = document.getElementById('wide-row'), narrow = document.getElementById('narrow-row');
+      wide.setAttribute('aria-hidden', 'true'); wide.inert = true;
+      narrow.setAttribute('aria-hidden', 'false'); narrow.inert = false;
+    };
+
+    let dragged = null;
+    document.querySelectorAll('[role=group]').forEach((c) => c.addEventListener('dragstart', () => { dragged = c; }));
+    document.querySelectorAll('.BoardColumn').forEach((col) => {
+      col.addEventListener('dragover', (e) => e.preventDefault());
+      col.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!dragged) return;
+        col.appendChild(dragged);
+        dragged.setAttribute('aria-label', `column ${col.dataset.name}`);
+        dragged = null;
+      });
+    });
+
+    // Test hook: a teammate completing a task (no local user input).
+    window.remoteComplete = (id) => {
+      const el = document.querySelector(`[data-task-id="${id}"] [role=checkbox]`);
+      el.setAttribute('aria-checked', 'true');
+      el.setAttribute('aria-label', 'Mark incomplete');
+    };
+  </script>
+</body>
+</html>

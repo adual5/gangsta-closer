@@ -84,6 +84,7 @@ def main():
         ctx.route("https://acme.atlassian.net/**", serve_jira)
         ctx.route("https://linear.app/gangsta-fixture/**", lambda route: route.fulfill(path=str(FIXTURES / "linear-board.html")))
         ctx.route("https://github.com/gangsta-fixture/**", serve_pr)
+        ctx.route("https://app.asana.com/**", lambda route: route.fulfill(path=str(FIXTURES / "asana.html")))
 
         page = ctx.new_page()
 
@@ -225,6 +226,58 @@ def main():
         pointer_drag("#OPS-17", 5)
         page.wait_for_timeout(SETTLE * 1000)
         check("drag -> Canceled is silent", plays() - n, 0)
+
+        # --- Asana (mock) ------------------------------------------------------
+        print("Asana list, task pane and board (fixture of live DOM structure)")
+        page.wait_for_timeout(COOLDOWN * 1000)
+        page.goto("https://app.asana.com/1/1/project/111/task/222")
+        page.wait_for_timeout(800)
+
+        n = plays()
+        page.click("#row301")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("list row: tick the checkmark plays", plays() - n, 1)
+        page.wait_for_timeout(COOLDOWN * 1000)
+
+        n = plays()
+        page.click("#row302")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("list row: untick a completed task is silent", plays() - n, 0)
+
+        n = plays()
+        page.click("#pane-button")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("task pane (wide): Mark complete plays", plays() - n, 1)
+        page.wait_for_timeout(COOLDOWN * 1000)
+
+        n = plays()
+        page.click("#pane-button")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("task pane: mark incomplete is silent", plays() - n, 0)
+
+        n = plays()
+        page.evaluate("narrowPane()")
+        page.click("#pane-check")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("task pane (narrow): checkmark plays", plays() - n, 1)
+        page.wait_for_timeout(COOLDOWN * 1000)
+
+        n = plays()
+        page.drag_and_drop("#c401", '[data-name="Done"]')
+        page.wait_for_timeout(SETTLE * 1000)
+        check("board: drag Doing -> Done plays", plays() - n, 1)
+        page.wait_for_timeout(COOLDOWN * 1000)
+
+        n = plays()
+        page.drag_and_drop("#c402", '[data-name="Review"]')
+        page.wait_for_timeout(SETTLE * 1000)
+        check("board: drag Doing -> Review is silent", plays() - n, 0)
+
+        page.wait_for_timeout(9000)  # outside the input window
+        n = plays()
+        page.evaluate("remoteComplete('402')")
+        page.wait_for_timeout(SETTLE * 1000)
+        check("teammate completes a task (no local input) is silent", plays() - n, 0)
 
         if not OFFLINE:
             live_github(page, plays)

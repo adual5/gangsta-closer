@@ -3,7 +3,7 @@
 const DEFAULTS = {
   enabled: true,
   volume: 0.8,
-  sites: { github: true, linear: true, jira: true },
+  sites: { github: true, linear: true, jira: true, asana: true },
   extraDone: '',
   debug: false,
 };

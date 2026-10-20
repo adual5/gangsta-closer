@@ -59,11 +59,11 @@
       for (const row of document.querySelectorAll('.SpreadsheetRow')) {
         const box = row.querySelector(CHECKBOX);
         const id = box && rowTaskId(row);
-        if (id) out.push({ key: `card:asana:${id}`, state: ticked(box, 'aria-checked') || 'Incomplete' });
+        if (id) out.push({ key: `card:asana:${id}`, state: ticked(box, 'aria-checked') || 'Incomplete', el: row });
       }
       for (const card of document.querySelectorAll('[data-task-id]:not(.TaskPane)')) {
         const box = card.querySelector(CHECKBOX);
-        if (box) out.push({ key: `card:asana:${card.dataset.taskId}`, state: ticked(box, 'aria-checked') || columnName(card) || 'Incomplete' });
+        if (box) out.push({ key: `card:asana:${card.dataset.taskId}`, state: ticked(box, 'aria-checked') || columnName(card) || 'Incomplete', el: card });
       }
       return out;
     },

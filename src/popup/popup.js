@@ -14,8 +14,22 @@ const $ = (sel) => document.querySelector(sel);
   for (const box of document.querySelectorAll('[data-site]')) box.checked = s.sites[box.dataset.site] !== false;
 
   $('#enabled').onchange = (e) => chrome.storage.sync.set({ enabled: e.target.checked });
-  $('#volume').oninput = (e) => chrome.storage.sync.set({ volume: Number(e.target.value) });
-  $('#extraDone').onchange = (e) => chrome.storage.sync.set({ extraDone: e.target.value });
+  // storage.sync allows 120 writes a minute; one per slider step can exceed it and drop the last value.
+  $('#volume').onchange = (e) => chrome.storage.sync.set({ volume: Number(e.target.value) }).catch(() => {});
+  // The popup closes (Esc, click outside) without a change event, so save as you type. Debounced for
+  // the storage.sync write limit, and flushed when the popup goes away.
+  let typed = null;
+  let timer = 0;
+  const saveExtra = () => {
+    clearTimeout(timer);
+    if (typed === null) return;
+    chrome.storage.sync.set({ extraDone: typed }).catch(() => {});
+    typed = null;
+  };
+  $('#extraDone').oninput = (e) => { typed = e.target.value; clearTimeout(timer); timer = setTimeout(saveExtra, 400); };
+  $('#extraDone').onchange = saveExtra;
+  addEventListener('pagehide', saveExtra);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveExtra(); });
   $('#debug').onchange = (e) => chrome.storage.sync.set({ debug: e.target.checked });
   for (const box of document.querySelectorAll('[data-site]')) {
     box.onchange = async () => {

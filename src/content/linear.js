@@ -51,7 +51,7 @@
         for (const a of cards) {
           const m = a.getAttribute('href').match(KEY_RE);
           const column = a.closest('[data-board-column]');
-          if (m && column) out.push({ key: `card:ln:${m[1].toUpperCase()}`, state: nameOf(column) });
+          if (m && column) out.push({ key: `card:ln:${m[1].toUpperCase()}`, state: nameOf(column), el: a });
         }
       }
       return out;

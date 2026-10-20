@@ -50,7 +50,7 @@
       for (const card of document.querySelectorAll(CARD_SEL)) {
         const k = cardKey(card);
         const column = card.closest(COLUMN_SEL);
-        if (k && column) out.push({ key: `card:jira:${k}`, state: columnName(column) });
+        if (k && column) out.push({ key: `card:jira:${k}`, state: columnName(column), el: card });
       }
       return out;
     },

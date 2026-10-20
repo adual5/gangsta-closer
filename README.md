@@ -128,7 +128,7 @@ GitHub Enterprise aren't watched. The clip command passes your path to the shell
 file name containing `$`, a backtick or `"` needs renaming first.
 
 **Tests:** `python3 claude-code/tests/test_closer.py` runs the real hook against a fake `gh` and a fake player
-(103 cases).
+(106 cases).
 
 | | Verified how |
 |---|---|

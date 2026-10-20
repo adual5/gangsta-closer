@@ -276,6 +276,19 @@ class Hook(unittest.TestCase):
         self.assertEqual(self.bash("gh pr merge -A me@example.com 7 --squash", {"prs": [pr(7)]},
                                    {"prs": [pr(7, "MERGED")]}), 1)
 
+    def test_rebase_short_flag_before_the_pr_number_reads_that_pr(self):
+        self.assertEqual(self.bash("gh pr merge -r 7", {"prs": [pr(7)]}, {"prs": [pr(7, "MERGED")]}), 1)
+
+    def test_cd_and_merge_in_a_subshell_reads_that_repo(self):
+        (self.tmp / "repo").mkdir()
+        self.env["FAKE_GH_CWD"] = str(self.tmp / "repo")
+        self.assertEqual(self.bash("(cd repo && gh pr merge --squash)", {"current_pr": pr(7)},
+                                   {"prs": [pr(7, "MERGED")]}), 1)
+
+    def test_close_after_time_plays(self):
+        self.assertEqual(self.bash("time gh issue close 12", {"issues": [issue(12)]},
+                                   {"issues": [issue(12, "CLOSED", "COMPLETED")]}), 1)
+
     def test_checkout_then_merge_reads_that_branch_pr(self):
         # The working copy is still on another branch's PR (9) when the pre hook runs.
         self.assertEqual(self.bash("git checkout feat && gh pr merge --squash",

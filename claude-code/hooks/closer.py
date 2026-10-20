@@ -27,7 +27,7 @@ import shutil
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,7 +43,6 @@ MAX_CLIP_BYTES = 5 * 1024 * 1024
 COOLDOWN_S = 3
 PENDING_TTL_S = 6 * 3600  # a call can wait on a permission prompt or run for a long time
 GH_TIMEOUT_S = 6
-PRE_DEADLINE_S = 11  # stay well under the 15 s PreToolUse timeout in hooks.json
 MAX_TARGETS = 8
 WATCH_S = 30 * 60  # how long a background Bash call's items are watched for the close to land
 WATCH_EVERY_S = 10
@@ -192,7 +191,7 @@ def strip_comments(command):
 
 
 def lex(command):
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|\n")
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|\n()")
     lexer.whitespace = " \t\r"
     lexer.whitespace_split = True
     lexer.commenters = ""  # strip_comments already removed them
@@ -214,7 +213,7 @@ def split_commands(command):
                 pass
     out, cur = [], []
     for t in tokens:
-        if t and set(t) <= set(";&|\n"):
+        if t and set(t) <= set(";&|\n()"):
             if cur:
                 out.append(cur)
             cur = []
@@ -237,10 +236,13 @@ def flag_value(args, *names):
     return None
 
 
-def positionals(args):
+# Flags that take a value. `gh pr merge -r` is --rebase, which takes none, so pr merge drops "-r".
+TAKES_VALUE = {"-R", "--repo", "-r", "--reason", "-c", "--comment", "-b", "--body", "-F", "--body-file",
+               "-t", "--subject", "-A", "--author-email", "--match-head-commit", "--duplicate-of"}
+
+
+def positionals(args, takes_value=TAKES_VALUE):
     """Positional args, skipping flags and the values of flags that take one."""
-    takes_value = {"-R", "--repo", "-r", "--reason", "-c", "--comment", "-b", "--body", "-F", "--body-file",
-                   "-t", "--subject", "-A", "--author-email", "--match-head-commit", "--duplicate-of"}
     out, skip = [], False
     for a in args:
         if skip:
@@ -264,7 +266,7 @@ def gh_targets_from_bash(command, cwd=None):
             continue
         # Skip env assignments and wrappers: `GH_REPO=x gh ...`, `env gh ...`, `/opt/homebrew/bin/gh ...`
         i, assigned = 0, {}
-        while i < len(words) and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[i]) or words[i] in ("env", "command", "sudo")):
+        while i < len(words) and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[i]) or words[i] in ("env", "command", "sudo", "time", "nohup")):
             if "=" in words[i]:
                 k, v = words[i].split("=", 1)
                 assigned[k] = v
@@ -288,7 +290,7 @@ def gh_targets_from_bash(command, cwd=None):
             for ref in positionals(args[2:])[:1]:
                 targets.append({"kind": "issue", "ref": ref, "repo": repo, "cwd": cwd})
         elif args[:2] == ["pr", "merge"]:
-            refs = positionals(args[2:])[:1]
+            refs = positionals(args[2:], TAKES_VALUE - {"-r"})[:1]
             t = {"kind": "pr", "ref": refs[0] if refs else branch, "repo": repo, "cwd": cwd}
             if not refs and created:
                 t["new"] = True
@@ -474,10 +476,6 @@ def jira_done(args, response, transcript):
     the listJiraIssueTransitions result Claude fetched first (each transition's "to" status carries
     one). Without that listing, the landed status name decides, by the extension's done-name rule."""
     results = response_dicts(response)
-    for d in results:
-        cat = d.get("statusCategory")
-        if isinstance(cat, dict) and cat.get("key"):
-            return cat["key"] == "done"
     t = args.get("transition")
     tid = t.get("id") if isinstance(t, dict) else None
     tid = tid or args.get("transitionId") or next((d["transitionId"] for d in results if d.get("transitionId")), None)
@@ -622,12 +620,10 @@ def hook_pre(event):
     path = pending_path(event)
     if not targets or not path:
         return
-    # gh calls run side by side under one deadline, so a long chain can't hit the hook timeout.
-    pool = ThreadPoolExecutor(max_workers=len(targets))
-    futures = [pool.submit(before_state, t, t.get("cwd") or event.get("cwd")) for t in targets]
-    wait(futures, timeout=PRE_DEADLINE_S)
-    pool.shutdown(wait=False, cancel_futures=True)
-    before = [f.result() for f in futures if f.done() and not f.cancelled() and f.exception() is None and f.result()]
+    # Items are read side by side; each makes at most two GH_TIMEOUT_S calls (gh, then git), which keeps
+    # a long chain under the 15 s PreToolUse timeout in hooks.json.
+    with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+        before = [b for b in pool.map(lambda t: before_state(t, t.get("cwd") or event.get("cwd")), targets) if b]
     log("pre", event.get("tool_name"), before)
     if before:
         private_dir(PENDING)
